@@ -1,0 +1,54 @@
+pipeline {
+
+    agent any
+
+    parameters {
+        choice(name: 'EKS_Cluster', 
+        choices: 
+        [
+            'Install DB & Cache', 
+            'Install Components',
+            'Install Monitoring tools',
+        ], 
+        description: 'Pick Option')
+        }
+
+    stages {
+        stage ('Installing DB and Cache Components') {
+            when {expression {params.EKS_Cluster == 'Install DB & Cache'}}
+            steps {
+            sh "helm repo add stable https://charts.helm.sh/stable"
+            sh "helm repo add bitnami https://charts.bitnami.com/bitnami"
+            sh "helm install redis stable/redis --set usePassword=false"
+            sh "helm install mongodb bitnami/mongodb --set auth.enabled=false"
+            sh "helm install rabbitmq bitnami/rabbitmq"
+            sh "helm install mysql stable/mysql"
+            }
+        }
+        stage ('Install Monitoring tools') {
+            when {expression {params.EKS_Cluster == 'Install Monitoring tools'}}
+            steps {
+            sh "helm repo add prometheus-community https://prometheus-community.github.io/helm-charts"
+            sh "helm repo add elastic https://helm.elastic.co"
+            sh "helm install prometheus prometheus-community/kube-prometheus-stack"
+            sh "helm install grafana stable/grafana"
+            sh "helm install filebeat elastic/filebeat"
+            }
+        }
+       stage ('Installing Robosho Components') {
+           when {expression {params.EKS_Cluster == 'Install Components'}}
+           steps {
+            script {
+                kubernetesDeploy(configs: "pods/cart.yml", kubeconfigId: "kubeconfig_deploy")
+                kubernetesDeploy(configs: "pods/catalogue.yml", kubeconfigId: "kubeconfig_deploy")
+                kubernetesDeploy(configs: "pods/frontend.yml", kubeconfigId: "kubeconfig_deploy")
+                kubernetesDeploy(configs: "pods/payment.yml", kubeconfigId: "kubeconfig_deploy")
+                kubernetesDeploy(configs: "pods/shipping.yml", kubeconfigId: "kubeconfig_deploy")
+                kubernetesDeploy(configs: "pods/user.yml", kubeconfigId: "kubeconfig_deploy")
+                sh "kubectl run workstation --image=jithendar/workstation:2.0 sleep 100000"
+                //kubernetesDeploy(configs: "pods/workstation.yml", kubeconfigId: "kubeconfig_deploy")
+                }
+                }
+           }
+       } 
+    }
